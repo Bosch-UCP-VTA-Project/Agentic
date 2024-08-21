@@ -9,6 +9,9 @@ readme = "README.md"
 python = "^3.11"
 llama-index = "0.10.64"
 streamlit = "^1.37.1"
+llama-index-llms-groq = "^0.1.4"
+llama-index-embeddings-jinaai = "^0.2.1"
+python-dotenv = "^1.0.1"
 
 
 [build-system]

@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-from utils.schema import RAGPipeline
+from bosch_vta_agentic.utils.schema import RAGPipeline
 
 
 def main():
