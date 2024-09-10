@@ -18,17 +18,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class Document(BaseModel):
     content: str = Field(..., description="The content of the document")
     metadata: dict = Field(
         default_factory=dict, description="Metadata associated with the document"
     )
 
+
 class QueryResult(BaseModel):
     answer: str = Field(..., description="The answer to the query")
     source_nodes: List[str] = Field(
         ..., description="The source nodes used to generate the answer"
     )
+
 
 class AutoTechnicianRAG:
     def __init__(
@@ -58,7 +61,7 @@ class AutoTechnicianRAG:
 
         Remember, your goal is to educate and guide the novice technician through the diagnostic and repair process, enhancing their skills and confidence over time.
         """
-        
+
         llm, embed_model = self.get_service_context()
         Settings.llm = llm
         Settings.embed_model = embed_model
@@ -67,7 +70,7 @@ class AutoTechnicianRAG:
         )
         self.indexes: Dict[str, VectorStoreIndex] = {}
         self.agent = None
-        
+
         # Load or create indexes
         self.load_or_create_indexes()
 
@@ -89,12 +92,12 @@ class AutoTechnicianRAG:
     def check_existing_indexes(self) -> bool:
         return all(
             os.path.exists(os.path.join(self.index_path, index_name))
-            for index_name in ['manuals', 'online_resources']
+            for index_name in ["manuals", "online_resources"]
         )
 
     def load_indexes(self):
         print("Loading existing indexes...")
-        for index_name in ['manuals', 'online_resources']:
+        for index_name in ["manuals", "online_resources"]:
             index_dir = os.path.join(self.index_path, index_name)
             storage_context = StorageContext.from_defaults(persist_dir=index_dir)
             self.indexes[index_name] = load_index_from_storage(storage_context)
@@ -103,19 +106,27 @@ class AutoTechnicianRAG:
     def create_indexes(self):
         print("Creating new indexes...")
         # Load and index technical manuals
-        manuals_documents = SimpleDirectoryReader(self.manuals_path,  recursive=True,).load_data()
+        manuals_documents = SimpleDirectoryReader(
+            self.manuals_path,
+            recursive=True,
+        ).load_data()
         if not manuals_documents:
             raise ValueError("No manual documents loaded. Check the manuals path.")
-        self.indexes['manuals'] = VectorStoreIndex.from_documents(
+        self.indexes["manuals"] = VectorStoreIndex.from_documents(
             manuals_documents,
             service_context=self.service_context,
         )
 
         # Load and index online resources
-        online_resources_documents = SimpleDirectoryReader(self.online_resources_path,  recursive=True,).load_data()
+        online_resources_documents = SimpleDirectoryReader(
+            self.online_resources_path,
+            recursive=True,
+        ).load_data()
         if not online_resources_documents:
-            raise ValueError("No online resource documents loaded. Check the online resources path.")
-        self.indexes['online_resources'] = VectorStoreIndex.from_documents(
+            raise ValueError(
+                "No online resource documents loaded. Check the online resources path."
+            )
+        self.indexes["online_resources"] = VectorStoreIndex.from_documents(
             online_resources_documents,
             service_context=self.service_context,
         )
@@ -132,8 +143,8 @@ class AutoTechnicianRAG:
                 query_engine=query_engine,
                 metadata=ToolMetadata(
                     name=f"{index_name}_search",
-                    description=f"Search the {index_name} for detailed automotive technical information and repair procedures."
-                )
+                    description=f"Search the {index_name} for detailed automotive technical information and repair procedures.",
+                ),
             )
             tools.append(tool)
 
@@ -147,7 +158,9 @@ class AutoTechnicianRAG:
 
     def query(self, query: str) -> QueryResult:
         if not self.agent:
-            raise ValueError("Agent not created. There might be an issue with index loading or creation.")
+            raise ValueError(
+                "Agent not created. There might be an issue with index loading or creation."
+            )
         response = self.agent.chat(query)
         return QueryResult(
             answer=response.response,
@@ -160,6 +173,7 @@ class AutoTechnicianRAG:
             os.makedirs(index_dir, exist_ok=True)
             index.storage_context.persist(persist_dir=index_dir)
 
+
 # Example usage
 # if __name__ == "__main__":
 #     auto_tech_rag = AutoTechnicianRAG(
@@ -167,9 +181,9 @@ class AutoTechnicianRAG:
 #         online_resources_path="bosch_vta_agentic/data/online_resources",
 #         index_path="indexes"
 #     )
-    
+
 #     # The indexes will be loaded if they exist, or created if they don't
-    
+
 #     result = auto_tech_rag.query("I have a 2018 Toyota Camry that won't start. The engine cranks but doesn't turn over. What should I check first?")
 #     print(result.answer)
 
