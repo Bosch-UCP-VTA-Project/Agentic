@@ -13,7 +13,7 @@ def main():
     if st.session_state.pipeline is None:
         manuals_path = "./data/technical_manuals"
         online_resources_path = "./data/online_resources"
-        index_path = "../indexes"
+        index_path = "./indexes"
 
         if os.path.exists(index_path):
             st.session_state.pipeline = AutoTechnicianRAG(
