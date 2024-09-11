@@ -66,6 +66,13 @@ async def startup_event():
     initialize_groq()
 
 
+@app.get("/health_check", response_model=ChatResponse)
+async def query():
+    return ChatResponse(
+        answer="Working!",
+    )
+
+
 @app.post("/query", response_model=ChatResponse)
 async def query(request: QueryRequest):
     if not pipeline:
