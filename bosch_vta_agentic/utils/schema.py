@@ -7,7 +7,7 @@ from llama_index.core import (
     VectorStoreIndex,
     load_index_from_storage,
 )
-from llama_index.core import Settings
+from llama_index.core import Settings, PromptTemplate
 from llama_index.llms.groq import Groq
 from llama_index.embeddings.jinaai import JinaEmbedding
 from llama_index.core.agent import ReActAgent
@@ -17,6 +17,52 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+SYSTEM_PROMPT = """You are an Expert Automobile Technician AI assistant designed to help professional automobile vehicle technicians diagnose and solve vehicular problems efficiently. Your knowledge comes from two primary sources:
+    1. Technical Manuals: Comprehensive guides and manuals from various automobile manufacturers.
+    2. Online Resources: Up-to-date information from reputable automotive websites, forums, and databases.
+
+When assisting a technician:
+    1. ALWAYS use BOTH the manuals_search and online_resources_search tools in that order to get the relevant information from your knowledge base before answering the query.
+    2. Gather information about the specific problem or symptoms the vehicle is experiencing.
+    3. Use your knowledge base to provide step-by-step diagnostic procedures.
+    4. Suggest potential causes of the problem, starting with the most common or likely issues.
+    5. Provide detailed repair instructions when applicable, including necessary tools and safety precautions.
+    6. Always prioritize safety in your recommendations.
+    7. Make sure to give concise and to-the-point answers with bullet points wherever relevant.
+
+Remember, your goal is to educate and guide the technician through the diagnostic and repair process, enhancing their skills and confidence over time.
+
+## Tools
+You have access to the following tools:
+{tool_desc}
+
+You MUST ALWAYS use BOTH tools in the following order:
+1. manuals_search
+2. online_resources_search
+
+## Output Format
+To answer the question, please use the following format:
+
+```
+Thought: I need to check the manuals first, then the online resources to get comprehensive information.
+Action: manuals_search
+Action Input: {{"input": "relevant search query based on the user's question"}}
+
+Thought: Now that I have information from the manuals, I need to check online resources for any additional or up-to-date information.
+Action: online_resources_search
+Action Input: {{"input": "relevant search query based on the user's question and information from manuals"}}
+
+Thought: I have gathered all the necessary information from both sources. Now I can formulate a comprehensive answer which is directly relevant to the technician's question.
+Answer: [Your detailed answer here, incorporating information from both sources]
+```
+
+Keep in mind the following: 
+    1. Do not hallucinate.
+    2. Do not make up factual information and do not list out sources names.
+    3. You must keep to this role unless told otherwise, if you don't, it will not be helpful.
+    4. If the user asks something that seems unrelated to vehicles and their repair, just give an output saying: Sorry, I can only help you with issues related to vehicle troubleshooting and diagnosis.
+    5. Always start with a Thought and follow the exact format provided above."""
 
 
 class Document(BaseModel):
@@ -43,24 +89,7 @@ class AutoTechnicianRAG:
         self.manuals_path = manuals_path
         self.online_resources_path = online_resources_path
         self.index_path = index_path
-        self.system_prompt = """
-        You are an Expert Automobile Technician AI assistant designed to help automobile vehicle technicians diagnose and solve vehicular problems efficiently. Your knowledge comes from two primary sources:
-
-        1. Technical Manuals: Comprehensive guides and manuals from various automobile manufacturers.
-        2. Online Resources: Up-to-date information from reputable automotive websites, forums, and databases.
-
-        When assisting a novice technician:
-        1. Always start by asking for the vehicle make, model, and year if not provided.
-        2. Gather information about the specific problem or symptoms the vehicle is experiencing.
-        3. Use your knowledge base to provide step-by-step diagnostic procedures.
-        4. Explain technical terms in simple language that a novice can understand.
-        5. Suggest potential causes of the problem, starting with the most common or likely issues.
-        6. Provide detailed repair instructions when applicable, including necessary tools and safety precautions.
-        7. If a problem seems too complex for a novice, advise seeking help from a more experienced technician.
-        8. Always prioritize safety in your recommendations.
-
-        Remember, your goal is to educate and guide the novice technician through the diagnostic and repair process, enhancing their skills and confidence over time.
-        """
+        self.system_prompt = SYSTEM_PROMPT
 
         llm, embed_model = self.get_service_context()
         Settings.llm = llm
@@ -105,7 +134,6 @@ class AutoTechnicianRAG:
 
     def create_indexes(self):
         print("Creating new indexes...")
-        # Load and index technical manuals
         manuals_documents = SimpleDirectoryReader(
             self.manuals_path,
             recursive=True,
@@ -131,7 +159,6 @@ class AutoTechnicianRAG:
             service_context=self.service_context,
         )
 
-        # Save the newly created indexes
         self.save_indexes()
         print("New indexes created and saved successfully.")
 
@@ -155,16 +182,23 @@ class AutoTechnicianRAG:
             system_prompt=self.system_prompt,
             memory=ChatMemoryBuffer.from_defaults(token_limit=4096),
         )
+        react_system_prompt = PromptTemplate(self.system_prompt)
+        self.agent.update_prompts({"agent_worker:system_prompt": react_system_prompt})
 
     def query(self, query: str) -> QueryResult:
         if not self.agent:
             raise ValueError(
                 "Agent not created. There might be an issue with index loading or creation."
             )
+
+        prompt_dict = self.agent.get_prompts()
+        for k, v in prompt_dict.items():
+            print(f"Prompt: {k}\n\nValue: {v.template}")
+
         response = self.agent.chat(query)
         return QueryResult(
             answer=response.response,
-            source_nodes=[],  # Note: ReActAgent doesn't provide source nodes directly
+            source_nodes=[],
         )
 
     def save_indexes(self):
@@ -172,27 +206,3 @@ class AutoTechnicianRAG:
             index_dir = os.path.join(self.index_path, index_name)
             os.makedirs(index_dir, exist_ok=True)
             index.storage_context.persist(persist_dir=index_dir)
-
-
-# Example usage
-# if __name__ == "__main__":
-#     auto_tech_rag = AutoTechnicianRAG(
-#         manuals_path="bosch_vta_agentic/data/technical_manuals",
-#         online_resources_path="bosch_vta_agentic/data/online_resources",
-#         index_path="indexes"
-#     )
-
-#     # The indexes will be loaded if they exist, or created if they don't
-
-#     result = auto_tech_rag.query("I have a 2018 Toyota Camry that won't start. The engine cranks but doesn't turn over. What should I check first?")
-#     print(result.answer)
-
-#     # For subsequent runs, just initialize the pipeline again:
-#     # It will automatically load the existing indexes instead of recreating them
-#     auto_tech_rag = AutoTechnicianRAG(
-#         manuals_path="bosch_vta_agentic/data/technical_manuals",
-#         online_resources_path="bosch_vta_agentic/data/online_resources",
-#         index_path="indexes"
-#     )
-#     result = auto_tech_rag.query("How do I check and replace the spark plugs on a 2015 Honda Civic?")
-#     print(result.answer)

@@ -1,13 +1,16 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import os
-import io
-import soundfile as sf
 from groq import Groq
 from bosch_vta_agentic.utils.schema import AutoTechnicianRAG
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
 
 # Global variables
 pipeline = None
@@ -18,14 +21,16 @@ class Source(BaseModel):
     content: str
 
 
+class QueryRequest(BaseModel):
+    query: str
+
+
 class ChatResponse(BaseModel):
     answer: str
-    sources: List[Source]
 
 
 class AudioResponse(BaseModel):
     answer: str
-    sources: List[Source]
     transcribed: str
 
 
@@ -62,15 +67,13 @@ async def startup_event():
 
 
 @app.post("/query", response_model=ChatResponse)
-async def query(query: str):
+async def query(request: QueryRequest):
     if not pipeline:
         raise HTTPException(status_code=500, detail="Pipeline not initialized")
-
     try:
-        result = pipeline.query(query)
+        result = pipeline.query(request.query)
         return ChatResponse(
             answer=result.answer,
-            sources=[Source(content=source) for source in result.source_nodes],
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
@@ -83,24 +86,22 @@ async def audio_query(audio: UploadFile = File(...)):
 
     try:
         audio_content = await audio.read()
-        audio_io = io.BytesIO(audio_content)
-        audio_data, sample_rate = sf.read(audio_io)
 
-        transcription_response = groq_client.audio.transcriptions.create(
-            file=("audio.wav", audio_content),  # Pass the audio file content
-            model="whisper-large-v3",  # Specify the model
-            response_format="json",  # Get the response in JSON format
-            language="en",  # Optional: Set the language if known
+        translation = groq_client.audio.translations.create(
+            file=("recoding.wav", audio_content),
+            model="whisper-large-v3",
+            prompt="Specify context or spelling",
+            response_format="json",
+            temperature=0.0,
         )
+        print(translation.text)
+        query_text = translation.text
 
-        transcribed_text = transcription_response.text
-
-        result = pipeline.query(transcribed_text)
+        result = pipeline.query(query_text)
 
         return AudioResponse(
             answer=result.answer,
-            sources=[source.content for source in result.source_nodes],
-            transcribed=transcribed_text,
+            transcribed=query_text,
         )
     except Exception as e:
         raise HTTPException(
