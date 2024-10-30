@@ -104,10 +104,10 @@ class AutoTechnicianRAG:
         self.load_or_create_indexes()
 
     def get_service_context(self):
-        groq_llm = Groq(model="llama-3.1-8b-instant", api_key=os.getenv("GROQ_API_KEY"))
+        groq_llm = Groq(model="llama-3.1-70b-versatile", api_key=os.getenv("GROQ_API_KEY"))
         jina_embed_model = JinaEmbedding(
             api_key=os.getenv("JINA_API_KEY"),
-            model="jina-embeddings-v2-base-en",
+            model="jina-embeddings-v3",
         )
         return groq_llm, jina_embed_model
 
