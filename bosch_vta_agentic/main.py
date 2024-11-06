@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, Dict
 import os
 from groq import Groq
 from bosch_vta_agentic.utils.schema import AutoTechnicianRAG
@@ -23,15 +23,23 @@ class Source(BaseModel):
 
 class QueryRequest(BaseModel):
     query: str
+    session_id: str
 
 
 class ChatResponse(BaseModel):
     answer: str
+    session_id: str
+    history: List[Dict[str, str]]
 
 
 class AudioResponse(BaseModel):
     answer: str
     transcribed: str
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
 
 
 def initialize_pipeline():
@@ -78,10 +86,18 @@ async def query(request: QueryRequest):
     if not pipeline:
         raise HTTPException(status_code=500, detail="Pipeline not initialized")
     try:
-        result = pipeline.query(request.query)
+        session_id = request.session_id
+        result = pipeline.query(request.query, session_id)
+        history = pipeline.get_history(session_id)
         return ChatResponse(
             answer=result.answer,
+            session_id=session_id,
+            history=history,
         )
+        # result = pipeline.query(request.query)
+        # return ChatResponse(
+        #     answer=result.answer,
+        # )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 

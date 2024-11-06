@@ -99,12 +99,13 @@ class AutoTechnicianRAG:
         )
         self.indexes: Dict[str, VectorStoreIndex] = {}
         self.agent = None
+        self.sessions = {}
 
         # Load or create indexes
         self.load_or_create_indexes()
 
     def get_service_context(self):
-        groq_llm = Groq(model="llama-3.1-70b-versatile", api_key=os.getenv("GROQ_API_KEY"))
+        groq_llm = Groq(model="llama-3.1-8b-instant", api_key=os.getenv("GROQ_API_KEY"))
         jina_embed_model = JinaEmbedding(
             api_key=os.getenv("JINA_API_KEY"),
             model="jina-embeddings-v3",
@@ -185,21 +186,34 @@ class AutoTechnicianRAG:
         react_system_prompt = PromptTemplate(self.system_prompt)
         self.agent.update_prompts({"agent_worker:system_prompt": react_system_prompt})
 
-    def query(self, query: str) -> QueryResult:
+    def query(self, query: str, session_id: str) -> QueryResult:
         if not self.agent:
             raise ValueError(
                 "Agent not created. There might be an issue with index loading or creation."
             )
 
-        prompt_dict = self.agent.get_prompts()
-        for k, v in prompt_dict.items():
-            print(f"Prompt: {k}\n\nValue: {v.template}")
+        if session_id not in self.sessions:
+            self.sessions[session_id] = []
+
+        self.sessions[session_id].append({"role": "user", "content": query})
+
+        # prompt_dict = self.agent.get_prompts()
+        # for k, v in prompt_dict.items():
+        #     print(f"Prompt: {k}\n\nValue: {v.template}")
 
         response = self.agent.chat(query)
+
+        self.sessions[session_id].append(
+            {"role": "assistant", "content": response.response}
+        )
+
         return QueryResult(
             answer=response.response,
             source_nodes=[],
         )
+
+    def get_history(self, session_id: str) -> List[Dict[str, str]]:
+        return self.sessions.get(session_id, [])
 
     def save_indexes(self):
         for index_name, index in self.indexes.items():
