@@ -12,13 +12,16 @@ app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
 
-# Global variables
 pipeline = None
 groq_client = None
 
 
 class Source(BaseModel):
     content: str
+
+
+class HistoryRequest(BaseModel):
+    session_id: str
 
 
 class QueryRequest(BaseModel):
@@ -35,11 +38,16 @@ class ChatResponse(BaseModel):
 class AudioResponse(BaseModel):
     answer: str
     transcribed: str
+    history: List[Dict[str, str]]
 
 
 class ChatMessage(BaseModel):
     role: str
     content: str
+
+
+class ChatHistory(BaseModel):
+    history: List[Dict[str, str]]
 
 
 def initialize_pipeline():
@@ -87,6 +95,7 @@ async def query(request: QueryRequest):
         raise HTTPException(status_code=500, detail="Pipeline not initialized")
     try:
         session_id = request.session_id
+        print(f"Query: {request.query}")
         result = pipeline.query(request.query, session_id)
         history = pipeline.get_history(session_id)
         return ChatResponse(
@@ -94,16 +103,26 @@ async def query(request: QueryRequest):
             session_id=session_id,
             history=history,
         )
-        # result = pipeline.query(request.query)
-        # return ChatResponse(
-        #     answer=result.answer,
-        # )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
+
+
+@app.post("/history", response_model=ChatHistory)
+async def history(request: HistoryRequest):
+    if not pipeline:
+        raise HTTPException(status_code=500, detail="Pipeline not initialized")
+    try:
+        session_id = request.session_id
+        history = pipeline.get_history(session_id)
+        return ChatHistory(
+            history=history,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
 
 @app.post("/audio", response_model=AudioResponse)
-async def audio_query(audio: UploadFile = File(...)):
+async def audio_query(audio: UploadFile = File(...), session_id: str = None):
     if not groq_client:
         raise HTTPException(status_code=500, detail="Groq client not initialized")
 
@@ -120,11 +139,12 @@ async def audio_query(audio: UploadFile = File(...)):
         print(translation.text)
         query_text = translation.text
 
-        result = pipeline.query(query_text)
+        session_id = session_id or "0"
+        result = pipeline.query(query_text, session_id)
+        history = pipeline.get_history(session_id)
 
         return AudioResponse(
-            answer=result.answer,
-            transcribed=query_text,
+            answer=result.answer, transcribed=query_text, history=history
         )
     except Exception as e:
         raise HTTPException(
